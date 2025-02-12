@@ -6,7 +6,7 @@ simulation_settings:
 
 structure:
   world_box:
-    dimensions: [50.0, 14.0, 2.0]  # Width, Length, Height (same as 1-DOF version)
+    dimensions: [50.0, 14.0, 2.0]  # Width, Length, Height
     mass: 0.00                     # Static base (no mass)
     inertia: [0.0, 0.0, 0.0]        # No inertia for static body
 
@@ -14,6 +14,20 @@ structure:
     dimensions: [10.0, 10.0, 0.5]  # Width, Length, Height
     mass: 200000.0                 # Heavy pedestal for stability
     inertia: [1668333.33, 1668333.33, 3333333.33]  # Inertia values
+
+dynamics:
+  world_box:
+    restitution: 0.3
+    lateralFriction: 0.5
+    spinningFriction: 0.3
+    contactDamping: 500000.0  # Increase damping
+    contactStiffness: 50000000.0  # Increase stiffness
+  pedestal:
+    restitution: 0.3
+    lateralFriction: 0.3
+    spinningFriction: 0.1
+    contactDamping: 500000.0  # Increase damping
+    contactStiffness: 50000000.0  # Increase stiffness
 
 joints:
   prismatic_x:

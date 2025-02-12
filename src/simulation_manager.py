@@ -3,32 +3,22 @@ import pybullet_data
 import yaml
 import time
 import os
+from trajectory_generator import TrajectoryGenerator
+
 
 class SimulationManager:
     """
-    A class to manage the PyBullet simulation for a 6-DOF robot.
-
+    Manages the PyBullet simulation for a 6-DOF robot.
+    
     Responsibilities:
-    - Initialize and configure the PyBullet physics engine.
-    - Load simulation settings from a YAML configuration file.
-    - Create the robot with prismatic and spherical joints.
-    - Execute provided trajectories on the robot.
-
-    Attributes:
-    ----------
-    client_id : int
-        ID of the PyBullet client connection.
-    robot_id : int
-        ID of the robot in the simulation.
+    - Initialize PyBullet physics engine.
+    - Load settings from a YAML file.
+    - Create and control a 6-DOF robot.
     """
 
-    def __init__(self, yaml_path="/home/akshay/ros2_ws/src/VSR_Pro/src/config/6dof_vsr.yaml"):
-        """
-        Initializes the PyBullet simulation and loads configuration from a YAML file.
-
-        Args:
-            yaml_path (str): Path to the YAML configuration file.
-        """
+    def __init__(self, yaml_path="config/6dof_vsr.yaml"):
+        """Initialize simulation from YAML configuration."""
+        
         # Load YAML Configuration
         with open(yaml_path, "r") as file:
             self.config = yaml.safe_load(file)
@@ -37,69 +27,83 @@ class SimulationManager:
         self.gravity = tuple(self.config["simulation_settings"]["gravity"])
         self.time_step = self.config["simulation_settings"]["time_step"]
         self.use_gui = self.config["simulation_settings"]["enable_gui"]
+        self.use_real_time = self.config["simulation_settings"]["use_real_time"]
+
+        # Ensure no duplicate PyBullet connections
+        if p.isConnected():
+            p.disconnect()
 
         # Initialize PyBullet
         self.client_id = p.connect(p.GUI if self.use_gui else p.DIRECT)
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
 
-        # Configure Physics
+        # Set Physics Properties
         p.setTimeStep(self.time_step, self.client_id)
         p.setGravity(*self.gravity, self.client_id)
+        if self.use_real_time:
+            p.setRealTimeSimulation(1)
+        else:
+            p.setRealTimeSimulation(0)
 
-        # Extract Structure Data
+        # Load structure configurations
         self.world_box_config = self.config["structure"]["world_box"]
         self.pedestal_config = self.config["structure"]["pedestal"]
-
-        # Extract Joint Configurations
+        self.dynamics_config = self.config["dynamics"]
         self.joint_config = self.config["joints"]
+        self.robot_visual_config = self.config["robot_visual"]
 
         self.robot_id = None
 
     def create_robot(self):
-        """
-        Creates a 6-DOF robot using prismatic joints for X, Y, Z translation and a spherical joint for rotation.
-        """
-        print("Creating 6-DOF Robot...")
+        """Creates the 6-DOF robot with prismatic and spherical joints."""
 
+        print("Creating 6-DOF Robot...")
+        
         # ✅ Load the Ground Plane
         plane_id = p.loadURDF("plane.urdf", physicsClientId=self.client_id)
-        print(f"Plane loaded with ID: {plane_id}")
+        print(f"✅ Plane loaded with ID: {plane_id}")
 
         # ✅ Step 1: Create World Box (Fixed Base)
         world_box_half_extents = [dim / 2 for dim in self.world_box_config["dimensions"]]
         world_box_collision_shape = p.createCollisionShape(p.GEOM_BOX, halfExtents=world_box_half_extents)
-        world_box_visual_shape = p.createVisualShape(p.GEOM_BOX, halfExtents=world_box_half_extents, rgbaColor=self.config["robot_visual"]["world_box_color"])
-        
+        world_box_visual_shape = p.createVisualShape(
+            p.GEOM_BOX, halfExtents=world_box_half_extents, rgbaColor=self.robot_visual_config["world_box_color"]
+        )
         world_box_position = [0, 0, world_box_half_extents[2]]
 
         # ✅ Step 2: Create Pedestal (Moving Base)
         pedestal_half_extents = [dim / 2 for dim in self.pedestal_config["dimensions"]]
         pedestal_collision_shape = p.createCollisionShape(p.GEOM_BOX, halfExtents=pedestal_half_extents)
-        pedestal_visual_shape = p.createVisualShape(p.GEOM_BOX, halfExtents=pedestal_half_extents, rgbaColor=self.config["robot_visual"]["pedestal_color"])
-
-        # Pedestal starts above the world box
+        pedestal_visual_shape = p.createVisualShape(
+            p.GEOM_BOX, halfExtents=pedestal_half_extents, rgbaColor=self.robot_visual_config["pedestal_color"]
+        )
         pedestal_position = [0, 0, world_box_half_extents[2] + pedestal_half_extents[2]]
 
         # ✅ Step 3: Define Joints (3 Prismatic + 1 Spherical)
         num_links = 4  # Three prismatic joints and one spherical joint
 
         link_masses = [self.pedestal_config["mass"]] * num_links
-        link_collision_shapes = [-1, -1, -1, pedestal_collision_shape]  # Last link has collision shape
-        link_visual_shapes = [-1, -1, -1, pedestal_visual_shape]  # Last link is visible
+        link_collision_shapes = [-1, -1, -1, pedestal_collision_shape]  # Only last link has a collision shape
+        link_visual_shapes = [-1, -1, -1, pedestal_visual_shape]  # Only last link is visible
 
         link_positions = [[0, 0, pedestal_half_extents[2]],  # X Prismatic
-                        [0, 0, 0.2],  # Y Prismatic
-                        [0, 0, 0.3],  # Z Prismatic
-                        [0, 0, 0.4]]  # Spherical (Final Link)]
-        
+                          [0, 0, 0.2],  # Y Prismatic
+                          [0, 0, 0.3],  # Z Prismatic
+                          [0, 0, 0.4]]  # Spherical joint
+
         link_orientations = [[0, 0, 0, 1]] * num_links
         link_inertial_positions = [[0, 0, 0]] * num_links
         link_inertial_orientations = [[0, 0, 0, 1]] * num_links
-        link_parent_indices = [0, 1, 2, 3]  # Each joint connects sequentially
+        link_parent_indices = [0, 1, 2, 3]  # Sequentially linked
 
         # Joint Types and Axes
         joint_types = [p.JOINT_PRISMATIC, p.JOINT_PRISMATIC, p.JOINT_PRISMATIC, p.JOINT_SPHERICAL]
-        joint_axes = [[1, 0, 0], [0, 1, 0], [0, 0, 1], [0, 0, 0]]  # X, Y, Z translation, and rotation
+        joint_axes = [
+            self.joint_config["prismatic_x"]["axis"],
+            self.joint_config["prismatic_y"]["axis"],
+            self.joint_config["prismatic_z"]["axis"],
+            self.joint_config["spherical_joint"]["axis"]
+        ]
 
         # ✅ Step 4: Create MultiBody
         self.robot_id = p.createMultiBody(
@@ -122,81 +126,70 @@ class SimulationManager:
         if self.robot_id < 0:
             raise RuntimeError("Failed to create robot!")
 
-        print(f"Robot created with ID: {self.robot_id}")
+        print(f" Robot created with ID: {self.robot_id}")
 
-        # ✅ Step 5: Configure Joint Dynamics for Stability
-        for i in range(num_links):
+        # Apply Dynamics
+        self.apply_dynamics()
+
+    def apply_dynamics(self):
+        """Applies and prints dynamics properties from YAML for verification."""
+
+        print("Applying Dynamics Properties...")
+
+        # Apply World Box Dynamics
+        p.changeDynamics(
+            self.robot_id,
+            -1,  # Base ID
+            restitution=self.dynamics_config["world_box"]["restitution"],
+            lateralFriction=self.dynamics_config["world_box"]["lateralFriction"],
+            spinningFriction=self.dynamics_config["world_box"]["spinningFriction"],
+            contactDamping=self.dynamics_config["world_box"]["contactDamping"],
+            contactStiffness=self.dynamics_config["world_box"]["contactStiffness"],
+            physicsClientId=self.client_id
+        )
+        print(f" World Box Dynamics Applied: {p.getDynamicsInfo(self.robot_id, -1)}")
+
+        # Apply Pedestal Dynamics
+        for i in range(4):  # Apply to all links (joints)
             p.changeDynamics(
                 self.robot_id,
                 i,
-                lateralFriction=0.8,
-                spinningFriction=0.3,
-                restitution=0.1,
+                restitution=self.dynamics_config["pedestal"]["restitution"],
+                lateralFriction=self.dynamics_config["pedestal"]["lateralFriction"],
+                spinningFriction=self.dynamics_config["pedestal"]["spinningFriction"],
+                contactDamping=self.dynamics_config["pedestal"]["contactDamping"],
+                contactStiffness=self.dynamics_config["pedestal"]["contactStiffness"],
                 physicsClientId=self.client_id
             )
+            print(f"Pedestal Link {i} Dynamics: {p.getDynamicsInfo(self.robot_id, i)}")
 
-        print("6-DOF Robot successfully created!")
+    def execute_trajectory(self):
+        """Executes a trajectory using TrajectoryGenerator."""
+        generator = TrajectoryGenerator()
+        joint_positions, joint_velocities, timestamps = generator.generate_trajectory()
 
-        num_joints = p.getNumJoints(sim_manager.robot_id, physicsClientId=sim_manager.client_id)
-        print(f"Number of joints in the robot: {num_joints}")
-
-    def execute_trajectory(self, joint_positions, joint_velocities, timestamps):
-        """
-        Executes a trajectory for the robot's joints.
-
-        Args:
-            joint_positions (list[list[float]]): Joint positions at each time step.
-            joint_velocities (list[list[float]]): Joint velocities at each time step.
-            timestamps (list[float]): Time values corresponding to each trajectory point.
-        """
         print("Executing trajectory...")
 
         for i in range(len(timestamps)):
-            time.sleep(self.time_step)
+            p.setJointMotorControl2(self.robot_id, 0, p.POSITION_CONTROL, targetPosition=joint_positions[i][0])
+            p.setJointMotorControl2(self.robot_id, 1, p.POSITION_CONTROL, targetPosition=joint_positions[i][1])
+            p.setJointMotorControl2(self.robot_id, 2, p.POSITION_CONTROL, targetPosition=joint_positions[i][2])
 
-            # Apply trajectory to prismatic joints
-            for j in range(3):  # First three joints are prismatic
-                p.setJointMotorControl2(
-                    bodyUniqueId=self.robot_id,
-                    jointIndex=j,
-                    controlMode=p.POSITION_CONTROL,
-                    targetPosition=joint_positions[i][j],
-                    force=self.joint_config[f"prismatic_{['x', 'y', 'z'][j]}"]["max_force"],
-                    physicsClientId=self.client_id
-                )
+            target_orientation = p.getQuaternionFromEuler([joint_positions[i][3], joint_positions[i][4], joint_positions[i][5]])
+            p.setJointMotorControlMultiDof(self.robot_id, 3, p.POSITION_CONTROL, targetPosition=target_orientation)
 
-            # Apply trajectory to spherical joint
-            spherical_target_orientation = p.getQuaternionFromEuler(joint_positions[i][3:])
-            p.setJointMotorControlMultiDof(
-                bodyUniqueId=self.robot_id,
-                jointIndex=3,
-                controlMode=p.POSITION_CONTROL,
-                targetPosition=spherical_target_orientation,
-                physicsClientId=self.client_id
-            )
-
-            # Step simulation
-            p.stepSimulation(self.client_id)
+            p.stepSimulation()
+            time.sleep(generator.timestep)
 
         print("Trajectory execution complete.")
-
-    def reset_simulation(self):
-        """Resets the simulation to its initial state."""
-        p.resetSimulation(self.client_id)
-        print("Simulation reset.")
-
-    def disconnect(self):
-        """Disconnects the PyBullet client."""
-        p.disconnect(self.client_id)
-        print("Simulation disconnected.")
 
 
 if __name__ == "__main__":
     sim_manager = SimulationManager()
-
-    # Load the robot
     sim_manager.create_robot()
+    # sim_manager.execute_trajectory()
 
-    # Keep simulation running
-    input("Press ENTER to exit...")
-    sim_manager.disconnect()
+      # Keep the simulation running to observe the pedestal behavior
+    while True:
+        p.stepSimulation()
+        time.sleep(0.01)
