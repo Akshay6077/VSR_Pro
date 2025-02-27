@@ -45,6 +45,12 @@ class SimulationManager:
         else:
             p.setRealTimeSimulation(0)
 
+         # ✅ Increase Solver Accuracy
+        p.setPhysicsEngineParameter(
+            numSolverIterations=1000,  # High iterations for better contact resolution
+            numSubSteps=10,            # More substeps improve physics accuracy
+            physicsClientId=self.client_id
+        )
         # Load structure configurations
         self.world_box_config = self.config["structure"]["world_box"]
         self.pedestal_config = self.config["structure"]["pedestal"]
@@ -55,10 +61,10 @@ class SimulationManager:
         self.robot_id = None
 
     def create_robot(self):
-        """Creates the 6-DOF robot with prismatic and spherical joints."""
+        """Creates the 6-DOF robot with prismatic and spherical joints, ensuring stability."""
 
         print("Creating 6-DOF Robot...")
-        
+
         # ✅ Load the Ground Plane
         plane_id = p.loadURDF("plane.urdf", physicsClientId=self.client_id)
         print(f"✅ Plane loaded with ID: {plane_id}")
@@ -69,48 +75,68 @@ class SimulationManager:
         world_box_visual_shape = p.createVisualShape(
             p.GEOM_BOX, halfExtents=world_box_half_extents, rgbaColor=self.robot_visual_config["world_box_color"]
         )
-        world_box_position = [0, 0, world_box_half_extents[2]]
 
-        # ✅ Step 2: Create Pedestal (Moving Base)
+        world_box_position = [0, 0, world_box_half_extents[2]]  # ✅ Correct Ground Position
+
+        # ✅ Step 2: Define Pedestal (Moving Base) with Gap
         pedestal_half_extents = [dim / 2 for dim in self.pedestal_config["dimensions"]]
         pedestal_collision_shape = p.createCollisionShape(p.GEOM_BOX, halfExtents=pedestal_half_extents)
         pedestal_visual_shape = p.createVisualShape(
             p.GEOM_BOX, halfExtents=pedestal_half_extents, rgbaColor=self.robot_visual_config["pedestal_color"]
         )
-        pedestal_position = [0, 0, world_box_half_extents[2] + pedestal_half_extents[2]]
+
+        pedestal_gap = 0.2  # ✅ Small gap for tolerance
+
+        pedestal_position = [
+            0, 0, 
+            world_box_position[2] + world_box_half_extents[2] + pedestal_half_extents[2] + pedestal_gap  # ✅ Correct Height
+        ]
+
+        print(f"🔍 World Box Position: {world_box_position}")
+        print(f"🔍 Pedestal Expected Position: {pedestal_position}")
 
         # ✅ Step 3: Define Joints (3 Prismatic + 1 Spherical)
-        num_links = 4  # Three prismatic joints and one spherical joint
+        num_links = 4  # ✅ Must match in all arrays
 
         link_masses = [self.pedestal_config["mass"]] * num_links
-        link_collision_shapes = [-1, -1, -1, pedestal_collision_shape]  # Only last link has a collision shape
-        link_visual_shapes = [-1, -1, -1, pedestal_visual_shape]  # Only last link is visible
-
-        link_positions = [[0, 0, pedestal_half_extents[2]],  # X Prismatic
-                          [0, 0, 0.2],  # Y Prismatic
-                          [0, 0, 0.3],  # Z Prismatic
-                          [0, 0, 0.4]]  # Spherical joint
-
+        link_collision_shapes = [-1, -1, -1, pedestal_collision_shape]  # ✅ Ensure same length
+        link_visual_shapes = [-1, -1, -1, pedestal_visual_shape]  # ✅ Ensure same length
+        link_positions = [
+            [0, 0, world_box_half_extents[2]],  # X Prismatic starts on top of the base
+            [0, 0, 0.2],  # Y Prismatic
+            [0, 0, 0.3],  # Z Prismatic
+            pedestal_position  # ✅ Pedestal placed above base
+        ]
         link_orientations = [[0, 0, 0, 1]] * num_links
         link_inertial_positions = [[0, 0, 0]] * num_links
         link_inertial_orientations = [[0, 0, 0, 1]] * num_links
-        link_parent_indices = [0, 1, 2, 3]  # Sequentially linked
-
-        # Joint Types and Axes
-        joint_types = [p.JOINT_PRISMATIC, p.JOINT_PRISMATIC, p.JOINT_PRISMATIC, p.JOINT_SPHERICAL]
-        joint_axes = [
+        link_parent_indices = [0, 1, 2, 3]  # ✅ Must match num_links
+        link_joint_types = [p.JOINT_PRISMATIC, p.JOINT_PRISMATIC, p.JOINT_PRISMATIC, p.JOINT_SPHERICAL]
+        link_joint_axes = [
             self.joint_config["prismatic_x"]["axis"],
             self.joint_config["prismatic_y"]["axis"],
             self.joint_config["prismatic_z"]["axis"],
             self.joint_config["spherical_joint"]["axis"]
         ]
 
-        # ✅ Step 4: Create MultiBody
+        # ✅ Ensure that all arrays have the same number of elements
+        assert len(link_masses) == num_links
+        assert len(link_collision_shapes) == num_links
+        assert len(link_visual_shapes) == num_links
+        assert len(link_positions) == num_links
+        assert len(link_orientations) == num_links
+        assert len(link_inertial_positions) == num_links
+        assert len(link_inertial_orientations) == num_links
+        assert len(link_parent_indices) == num_links
+        assert len(link_joint_types) == num_links
+        assert len(link_joint_axes) == num_links
+
+        # ✅ Create the MultiBody with Properly Matched Arrays
         self.robot_id = p.createMultiBody(
-            baseMass=self.world_box_config["mass"],
+            baseMass=0.0,  # ✅ Small non-zero mass for collision response
             baseCollisionShapeIndex=world_box_collision_shape,
             baseVisualShapeIndex=world_box_visual_shape,
-            basePosition=world_box_position,
+            basePosition=world_box_position,  
             linkMasses=link_masses,
             linkCollisionShapeIndices=link_collision_shapes,
             linkVisualShapeIndices=link_visual_shapes,
@@ -119,24 +145,38 @@ class SimulationManager:
             linkInertialFramePositions=link_inertial_positions,
             linkInertialFrameOrientations=link_inertial_orientations,
             linkParentIndices=link_parent_indices,
-            linkJointTypes=joint_types,
-            linkJointAxis=joint_axes
+            linkJointTypes=link_joint_types,
+            linkJointAxis=link_joint_axes
         )
 
         if self.robot_id < 0:
             raise RuntimeError("Failed to create robot!")
 
-        print(f" Robot created with ID: {self.robot_id}")
+        print(f"✅ Robot created with ID: {self.robot_id}")
 
-        # Apply Dynamics
+        # ✅ Enable Collision Between Base & Pedestal
+        p.setCollisionFilterPair(self.robot_id, self.robot_id, -1, 3, enableCollision=1)
+        p.changeDynamics(
+        self.robot_id, 2,  # Z-prismatic joint
+        jointLowerLimit=pedestal_gap,  # ✅ Minimum allowed height
+        jointUpperLimit=3.0,  # ✅ Allow some movement
+        maxJointVelocity=0.1,  # ✅ Prevent sudden downward motion
+        physicsClientId=self.client_id
+        )
+
+
+        # ✅ Apply Dynamics Separately
         self.apply_dynamics()
+
+        print("🚀 Pedestal should now stay above the base with a small gap and move correctly.")
+
 
     def apply_dynamics(self):
         """Applies and prints dynamics properties from YAML for verification."""
 
         print("Applying Dynamics Properties...")
 
-        # Apply World Box Dynamics
+        # ✅ Apply World Box Dynamics
         p.changeDynamics(
             self.robot_id,
             -1,  # Base ID
@@ -147,9 +187,10 @@ class SimulationManager:
             contactStiffness=self.dynamics_config["world_box"]["contactStiffness"],
             physicsClientId=self.client_id
         )
-        print(f" World Box Dynamics Applied: {p.getDynamicsInfo(self.robot_id, -1)}")
 
-        # Apply Pedestal Dynamics
+        print(f"✅ World Box Dynamics Applied: {p.getDynamicsInfo(self.robot_id, -1)}")
+
+        # ✅ Apply Pedestal Dynamics
         for i in range(4):  # Apply to all links (joints)
             p.changeDynamics(
                 self.robot_id,
@@ -159,9 +200,12 @@ class SimulationManager:
                 spinningFriction=self.dynamics_config["pedestal"]["spinningFriction"],
                 contactDamping=self.dynamics_config["pedestal"]["contactDamping"],
                 contactStiffness=self.dynamics_config["pedestal"]["contactStiffness"],
+                localInertiaDiagonal=self.pedestal_config["inertia"],  # ✅ Apply Inertia from YAML
                 physicsClientId=self.client_id
             )
-            print(f"Pedestal Link {i} Dynamics: {p.getDynamicsInfo(self.robot_id, i)}")
+
+            print(f"✅ Pedestal Link {i} Dynamics: {p.getDynamicsInfo(self.robot_id, i)}")
+
 
     def execute_trajectory(self):
         """Executes a trajectory using TrajectoryGenerator."""
@@ -187,7 +231,7 @@ class SimulationManager:
 if __name__ == "__main__":
     sim_manager = SimulationManager()
     sim_manager.create_robot()
-    # sim_manager.execute_trajectory()
+    sim_manager.execute_trajectory()
 
       # Keep the simulation running to observe the pedestal behavior
     while True:

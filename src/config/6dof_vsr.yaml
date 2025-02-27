@@ -20,14 +20,14 @@ dynamics:
     restitution: 0.3
     lateralFriction: 0.5
     spinningFriction: 0.3
-    contactDamping: 500000.0  # Increase damping
-    contactStiffness: 50000000.0  # Increase stiffness
+    contactDamping: 10000000.0  # Increase damping
+    contactStiffness: 5000000000.0  # Increase stiffness
   pedestal:
     restitution: 0.3
     lateralFriction: 0.3
     spinningFriction: 0.1
-    contactDamping: 500000.0  # Increase damping
-    contactStiffness: 50000000.0  # Increase stiffness
+    contactDamping: 10000000.0  # Increase damping
+    contactStiffness: 5000000000.0  # Increase stiffness
 
 joints:
   prismatic_x:
