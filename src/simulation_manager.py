@@ -205,27 +205,48 @@ class SimulationManager:
             )
 
             print(f"✅ Pedestal Link {i} Dynamics: {p.getDynamicsInfo(self.robot_id, i)}")
+            
+    def execute_trajectory(self, trajectory_params):
+        """Executes a trajectory using user-updated parameters from GUI."""
 
+        if self.robot_id is None:
+            print("Error: Robot has not been created yet.")
+            return
 
-    def execute_trajectory(self):
-        """Executes a trajectory using TrajectoryGenerator."""
-        generator = TrajectoryGenerator()
+        print(f"Executing trajectory with parameters: {trajectory_params}")
+
+        # ✅ Create a new trajectory using updated user inputs
+        generator = TrajectoryGenerator(
+            duration=trajectory_params["duration"],
+            timestep=trajectory_params["timestep"],
+            frequency=trajectory_params["frequency"],
+            amplitude_translation=trajectory_params["amplitude_translation"],
+            amplitude_rotation=trajectory_params["amplitude_rotation"]
+        )
+
         joint_positions, joint_velocities, timestamps = generator.generate_trajectory()
 
         print("Executing trajectory...")
 
         for i in range(len(timestamps)):
+            # ✅ Control prismatic joints (X, Y, Z)
             p.setJointMotorControl2(self.robot_id, 0, p.POSITION_CONTROL, targetPosition=joint_positions[i][0])
             p.setJointMotorControl2(self.robot_id, 1, p.POSITION_CONTROL, targetPosition=joint_positions[i][1])
             p.setJointMotorControl2(self.robot_id, 2, p.POSITION_CONTROL, targetPosition=joint_positions[i][2])
 
-            target_orientation = p.getQuaternionFromEuler([joint_positions[i][3], joint_positions[i][4], joint_positions[i][5]])
+            # ✅ Control spherical joint (Roll, Pitch, Yaw)
+            target_orientation = p.getQuaternionFromEuler([
+                joint_positions[i][3],  # Roll
+                joint_positions[i][4],  # Pitch
+                joint_positions[i][5]   # Yaw
+            ])
             p.setJointMotorControlMultiDof(self.robot_id, 3, p.POSITION_CONTROL, targetPosition=target_orientation)
 
             p.stepSimulation()
-            time.sleep(generator.timestep)
+            time.sleep(trajectory_params["timestep"])
 
         print("Trajectory execution complete.")
+
 
 
 if __name__ == "__main__":

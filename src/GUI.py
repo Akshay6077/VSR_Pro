@@ -7,7 +7,6 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt
 import pybullet as p
 from simulation_manager import SimulationManager
-from trajectory_generator import TrajectoryGenerator
 
 class PyBulletGUI(QWidget):
     def __init__(self):
@@ -24,7 +23,7 @@ class PyBulletGUI(QWidget):
             "timestep": 0.01,
             "frequency": 0.5,
             "amplitude_translation": 0.5,
-            "amplitude_rotation": 0.1
+            "amplitude_rotation": 0.1  
         }
 
         self.init_ui()
@@ -105,6 +104,14 @@ class PyBulletGUI(QWidget):
             row.addWidget(input_field)
             layout.addLayout(row)
 
+    def update_trajectory_params(self):
+        """Reads updated values from the GUI inputs and updates the trajectory parameters."""
+        for param in self.trajectory_params:
+            try:
+                self.trajectory_params[param] = float(self.param_inputs[param].text())
+            except ValueError:
+                print(f"Warning: Invalid input for {param}, using default value.")
+
     def toggle_simulation(self):
         """Starts or stops the simulation."""
         if not self.running:
@@ -138,12 +145,21 @@ class PyBulletGUI(QWidget):
         while self.running:
             if self.simulation_manager is not None:
                 p.stepSimulation()
-            time.sleep(0.01)
-
+                time.sleep(0.01)
+                
     def toggle_gravity(self):
-        """Toggles gravity in the simulation."""
+        """Toggles gravity in the simulation and applies the change immediately."""
         if self.simulation_manager:
-            p.setGravity(0, 0, -9.81 if self.gravity_checkbox.isChecked() else 0)
+            if self.gravity_checkbox.isChecked():
+                print("✅ Gravity Enabled")
+                p.setGravity(0, 0, -9.81)
+            else:
+                print("🚀 Gravity Disabled")
+                p.setGravity(0, 0, 0)
+
+            # ✅ Re-apply forces after gravity change to ensure objects update
+            p.stepSimulation()
+
 
     def update_speed(self):
         """Updates the simulation speed."""
@@ -153,12 +169,19 @@ class PyBulletGUI(QWidget):
             p.setTimeStep(0.01 / speed)
 
     def reset_simulation(self):
-        """Resets the simulation."""
+        """Resets the simulation and re-applies gravity."""
         if self.simulation_manager:
             self.running = False
             p.resetSimulation()
             self.simulation_manager.create_robot()
-            self.start_simulation()
+
+            # ✅ Ensure gravity is re-applied based on the checkbox state
+            if self.gravity_checkbox.isChecked():
+                p.setGravity(0, 0, -9.81)
+            else:
+                p.setGravity(0, 0, 0)
+
+            self.start_simulation()  # Restart simulation after reset
 
     def toggle_trajectory(self):
         """Starts or stops the trajectory execution."""
@@ -173,6 +196,9 @@ class PyBulletGUI(QWidget):
             print("Error: Simulation is not running.")
             return
 
+        # Read updated values from GUI inputs
+        self.update_trajectory_params()
+
         self.trajectory_running = True
         self.trajectory_button.setText("Stop Trajectory")
 
@@ -185,13 +211,15 @@ class PyBulletGUI(QWidget):
         self.trajectory_button.setText("Execute Trajectory")
 
     def run_trajectory(self):
-        """Runs the trajectory execution loop."""
+        """Runs the trajectory execution using SimulationManager's method."""
         if self.simulation_manager is None or self.simulation_manager.robot_id is None:
             print("Error: SimulationManager is not initialized.")
             return
 
-        print("Executing trajectory...")
-        self.simulation_manager.execute_trajectory()
+        print(f"Executing trajectory with parameters: {self.trajectory_params}")
+
+        # Call execute_trajectory() in SimulationManager
+        self.simulation_manager.execute_trajectory(self.trajectory_params)
 
         self.trajectory_running = False
         self.trajectory_button.setText("Execute Trajectory")
