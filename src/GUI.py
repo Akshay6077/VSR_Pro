@@ -2,7 +2,7 @@ import sys
 import threading
 import time
 from PyQt5.QtWidgets import (
-    QApplication, QWidget, QPushButton, QVBoxLayout, QLabel, QSlider, QCheckBox, QLineEdit, QHBoxLayout
+    QApplication, QWidget, QPushButton, QVBoxLayout, QLabel, QCheckBox, QLineEdit, QHBoxLayout
 )
 from PyQt5.QtCore import Qt
 import pybullet as p
@@ -39,20 +39,12 @@ class PyBulletGUI(QWidget):
         self.start_button.clicked.connect(self.toggle_simulation)
         layout.addWidget(self.start_button)
 
-        self.gravity_checkbox = QCheckBox("Enable Gravity", self)
-        self.gravity_checkbox.setChecked(True)
-        self.gravity_checkbox.stateChanged.connect(self.toggle_gravity)
-        layout.addWidget(self.gravity_checkbox)
+        # Removed Gravity Button and Simulation Speed controls
 
-        self.speed_label = QLabel("Simulation Speed: 1x", self)
-        layout.addWidget(self.speed_label)
-
-        self.speed_slider = QSlider(Qt.Horizontal, self)
-        self.speed_slider.setMinimum(1)
-        self.speed_slider.setMaximum(10)
-        self.speed_slider.setValue(1)
-        self.speed_slider.valueChanged.connect(self.update_speed)
-        layout.addWidget(self.speed_slider)
+        # Add Real-Time Checkbox for trajectory execution mode
+        self.realtime_checkbox = QCheckBox("Real-Time Trajectory", self)
+        self.realtime_checkbox.setChecked(False)
+        layout.addWidget(self.realtime_checkbox)
 
         self.reset_button = QPushButton("Reset Simulation", self)
         self.reset_button.clicked.connect(self.reset_simulation)
@@ -147,40 +139,12 @@ class PyBulletGUI(QWidget):
                 p.stepSimulation()
                 time.sleep(0.01)
                 
-    def toggle_gravity(self):
-        """Toggles gravity in the simulation and applies the change immediately."""
-        if self.simulation_manager:
-            if self.gravity_checkbox.isChecked():
-                print("✅ Gravity Enabled")
-                p.setGravity(0, 0, -9.81)
-            else:
-                print("🚀 Gravity Disabled")
-                p.setGravity(0, 0, 0)
-
-            # ✅ Re-apply forces after gravity change to ensure objects update
-            p.stepSimulation()
-
-
-    def update_speed(self):
-        """Updates the simulation speed."""
-        speed = self.speed_slider.value()
-        self.speed_label.setText(f"Simulation Speed: {speed}x")
-        if self.simulation_manager:
-            p.setTimeStep(0.01 / speed)
-
     def reset_simulation(self):
-        """Resets the simulation and re-applies gravity."""
+        """Resets the simulation and re-applies settings."""
         if self.simulation_manager:
             self.running = False
             p.resetSimulation()
             self.simulation_manager.create_robot()
-
-            # ✅ Ensure gravity is re-applied based on the checkbox state
-            if self.gravity_checkbox.isChecked():
-                p.setGravity(0, 0, -9.81)
-            else:
-                p.setGravity(0, 0, 0)
-
             self.start_simulation()  # Restart simulation after reset
 
     def toggle_trajectory(self):
@@ -196,7 +160,7 @@ class PyBulletGUI(QWidget):
             print("Error: Simulation is not running.")
             return
 
-        # Read updated values from GUI inputs
+        # Read updated trajectory parameters from GUI inputs
         self.update_trajectory_params()
 
         self.trajectory_running = True
@@ -216,10 +180,11 @@ class PyBulletGUI(QWidget):
             print("Error: SimulationManager is not initialized.")
             return
 
-        print(f"Executing trajectory with parameters: {self.trajectory_params}")
+        # Determine the mode based on the Real-Time checkbox
+        real_time = self.realtime_checkbox.isChecked()
+        print(f"Executing trajectory in {'real-time' if real_time else 'offline'} mode with parameters: {self.trajectory_params}")
 
-        # Call execute_trajectory() in SimulationManager
-        self.simulation_manager.execute_trajectory(self.trajectory_params)
+        self.simulation_manager.execute_trajectory(self.trajectory_params, real_time=real_time)
 
         self.trajectory_running = False
         self.trajectory_button.setText("Execute Trajectory")
