@@ -2,7 +2,7 @@ import sys
 import threading
 import time
 from PyQt5.QtWidgets import (
-    QApplication, QWidget, QPushButton, QVBoxLayout, QLabel, QCheckBox, QLineEdit, QHBoxLayout
+    QApplication, QWidget, QPushButton, QVBoxLayout, QLabel, QCheckBox, QLineEdit, QHBoxLayout,QFileDialog
 )
 from PyQt5.QtCore import Qt
 import pybullet as p
@@ -53,6 +53,10 @@ class PyBulletGUI(QWidget):
         self.trajectory_button = QPushButton("Execute Trajectory", self)
         self.trajectory_button.clicked.connect(self.toggle_trajectory)
         layout.addWidget(self.trajectory_button)
+        # New Upload OBJ button
+        self.upload_obj_button = QPushButton("Upload OBJ", self)
+        self.upload_obj_button.clicked.connect(self.upload_obj)
+        layout.addWidget(self.upload_obj_button)
 
         self.add_trajectory_controls(layout)
 
@@ -60,8 +64,19 @@ class PyBulletGUI(QWidget):
         layout.addWidget(self.position_label)
 
         self.setLayout(layout)
-
         self.start_position_monitor()
+
+
+    def upload_obj(self):
+        """Opens a file dialog to let the user select an OBJ file and spawns it on top of the pedestal."""
+        if self.simulation_manager is None or self.simulation_manager.robot_id is None:
+            print("Error: Simulation must be running to upload an OBJ.")
+            return
+        obj_path, _ = QFileDialog.getOpenFileName(self, "Select OBJ File", "", "OBJ Files (*.obj)")
+        if obj_path:
+            print(f"Selected OBJ file: {obj_path}")
+            # Optionally, you can add a GUI input for custom mesh scale.
+            self.simulation_manager.spawn_obj_on_pedestal(obj_path, mesh_scale=[1, 1, 1])
 
     def start_position_monitor(self):
         """Continuously updates the pedestal position in the GUI."""

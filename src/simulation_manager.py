@@ -77,7 +77,7 @@ class SimulationManager:
         pedestal_visual_shape = p.createVisualShape(
             p.GEOM_BOX, halfExtents=pedestal_half_extents, rgbaColor=self.robot_visual_config["pedestal_color"]
         )
-        pedestal_gap = 0.2  # Small gap for tolerance
+        pedestal_gap = 0.0  # Small gap for tolerance
 
         pedestal_position = [
             0, 0, 
@@ -246,6 +246,44 @@ class SimulationManager:
 
 
         print("Trajectory execution complete.")
+    def spawn_obj_on_pedestal(self, obj_path: str, mesh_scale=[1, 1, 1]):
+        """
+        Spawns an OBJ file on top of the pedestal.
+        
+        This method retrieves the pedestal's position (assumed to be link index 3)
+        and creates a visual shape from the provided OBJ file. A new multi-body 
+        is then created with zero mass so that it stays static on the pedestal.
+        """
+        if self.robot_id is None:
+            print("Error: Robot has not been created yet.")
+            return
+
+        # Retrieve the state of the pedestal link (assumed to be link 3)
+        pedestal_state = p.getLinkState(self.robot_id, 3)
+        pedestal_position = pedestal_state[0]  # position from the link state
+
+        # Create a visual shape from the OBJ file.
+        obj_visual_shape = p.createVisualShape(
+            shapeType=p.GEOM_MESH,
+            fileName=obj_path,
+            meshScale=mesh_scale
+        )
+
+        # Optionally, create a collision shape if physical interaction is needed.
+        # obj_collision_shape = p.createCollisionShape(
+        #     shapeType=p.GEOM_MESH,
+        #     fileName=obj_path,
+        #     meshScale=mesh_scale
+        # )
+
+        # Spawn the OBJ on top of the pedestal using a static multi-body.
+        obj_id = p.createMultiBody(
+            baseMass=0,  # static object
+            baseVisualShapeIndex=obj_visual_shape,
+            basePosition=pedestal_position
+        )
+        print(f"Spawned OBJ from '{obj_path}' on pedestal at {pedestal_position} with id: {obj_id}")
+        return obj_id
 
 
 if __name__ == "__main__":
