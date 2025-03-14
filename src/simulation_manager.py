@@ -1,8 +1,11 @@
+# simulation_manager.py
+
+import yaml
 import pybullet as p
 import pybullet_data
-import yaml
 import time
-from trajectory_generator import TrajectoryGenerator  # Import the trajectory generator module
+
+from trajectory_generator import TrajectoryGenerator
 
 class SimulationManager:
     """
@@ -56,7 +59,7 @@ class SimulationManager:
         self.robot_id = None
 
     def create_robot(self):
-        """Creates the 6-DOF robot with prismatic and spherical joints, ensuring stability."""
+        """Creates the 6-DOF robot with prismatic and spherical joints."""
         print("Creating 6-DOF Robot...")
 
         # Load the Ground Plane
@@ -77,31 +80,31 @@ class SimulationManager:
         pedestal_visual_shape = p.createVisualShape(
             p.GEOM_BOX, halfExtents=pedestal_half_extents, rgbaColor=self.robot_visual_config["pedestal_color"]
         )
-        pedestal_gap = 0.0  # Small gap for tolerance
+        pedestal_gap = 0.0  # small gap
 
         pedestal_position = [
-            0, 0, 
-            world_box_position[2] + world_box_half_extents[2] + pedestal_half_extents[2] + pedestal_gap  # Correct Height
+            0, 
+            0, 
+            world_box_position[2] + world_box_half_extents[2] + pedestal_half_extents[2] + pedestal_gap
         ]
         print(f"🔍 World Box Position: {world_box_position}")
         print(f"🔍 Pedestal Expected Position: {pedestal_position}")
 
         # Step 3: Define Joints (3 Prismatic + 1 Spherical)
-        num_links = 4  # Must match in all arrays
-
+        num_links = 4
         link_masses = [self.pedestal_config["mass"]] * num_links
-        link_collision_shapes = [-1, -1, -1, pedestal_collision_shape]  # Ensure same length
-        link_visual_shapes = [-1, -1, -1, pedestal_visual_shape]  # Ensure same length
+        link_collision_shapes = [-1, -1, -1, pedestal_collision_shape]
+        link_visual_shapes = [-1, -1, -1, pedestal_visual_shape]
         link_positions = [
-            [0, 0, world_box_half_extents[2]],  # X Prismatic starts on top of the base
-            [0, 0, 0.2],  # Y Prismatic
-            [0, 0, 0.3],  # Z Prismatic
-            pedestal_position  # Pedestal placed above base
+            [0, 0, world_box_half_extents[2]],
+            [0, 0, 0.2],
+            [0, 0, 0.3],
+            pedestal_position
         ]
         link_orientations = [[0, 0, 0, 1]] * num_links
         link_inertial_positions = [[0, 0, 0]] * num_links
         link_inertial_orientations = [[0, 0, 0, 1]] * num_links
-        link_parent_indices = [0, 1, 2, 3]  # Must match num_links
+        link_parent_indices = [0, 1, 2, 3]
         link_joint_types = [p.JOINT_PRISMATIC, p.JOINT_PRISMATIC, p.JOINT_PRISMATIC, p.JOINT_SPHERICAL]
         link_joint_axes = [
             self.joint_config["prismatic_x"]["axis"],
@@ -110,21 +113,8 @@ class SimulationManager:
             self.joint_config["spherical_joint"]["axis"]
         ]
 
-        # Ensure that all arrays have the same number of elements
-        assert len(link_masses) == num_links
-        assert len(link_collision_shapes) == num_links
-        assert len(link_visual_shapes) == num_links
-        assert len(link_positions) == num_links
-        assert len(link_orientations) == num_links
-        assert len(link_inertial_positions) == num_links
-        assert len(link_inertial_orientations) == num_links
-        assert len(link_parent_indices) == num_links
-        assert len(link_joint_types) == num_links
-        assert len(link_joint_axes) == num_links
-
-        # Create the MultiBody with properly matched arrays
         self.robot_id = p.createMultiBody(
-            baseMass=0.0,  # Small non-zero mass for collision response
+            baseMass=0.0,
             baseCollisionShapeIndex=world_box_collision_shape,
             baseVisualShapeIndex=world_box_visual_shape,
             basePosition=world_box_position,  
@@ -147,26 +137,28 @@ class SimulationManager:
 
         # Enable collision between base & pedestal
         p.setCollisionFilterPair(self.robot_id, self.robot_id, -1, 3, enableCollision=1)
+
+        # Set some constraints on the Z prismatic joint
         p.changeDynamics(
-            self.robot_id, 2,  # Z-prismatic joint
-            jointLowerLimit=pedestal_gap,  # Minimum allowed height
-            jointUpperLimit=3.0,  # Allow some movement
-            maxJointVelocity=0.1,  # Prevent sudden downward motion
+            self.robot_id, 2,
+            jointLowerLimit=pedestal_gap,
+            jointUpperLimit=3.0,
+            maxJointVelocity=0.1,
             physicsClientId=self.client_id
         )
 
-        # Apply dynamics separately
+        # Apply dynamics
         self.apply_dynamics()
-        print("🚀 Pedestal should now stay above the base with a small gap and move correctly.")
+        print("🚀 Pedestal created and dynamics applied.")
 
     def apply_dynamics(self):
-        """Applies and prints dynamics properties from YAML for verification."""
+        """Applies and prints dynamics properties from YAML."""
         print("Applying Dynamics Properties...")
 
-        # Apply World Box Dynamics
+        # World Box base
         p.changeDynamics(
             self.robot_id,
-            -1,  # Base ID
+            -1,
             restitution=self.dynamics_config["world_box"]["restitution"],
             lateralFriction=self.dynamics_config["world_box"]["lateralFriction"],
             spinningFriction=self.dynamics_config["world_box"]["spinningFriction"],
@@ -174,9 +166,9 @@ class SimulationManager:
             contactStiffness=self.dynamics_config["world_box"]["contactStiffness"],
             physicsClientId=self.client_id
         )
-        print(f"✅ World Box Dynamics Applied: {p.getDynamicsInfo(self.robot_id, -1)}")
+        print(f"✅ World Box Dynamics: {p.getDynamicsInfo(self.robot_id, -1)}")
 
-        # Apply Pedestal Dynamics for each link
+        # Pedestal (links 0,1,2,3)
         for i in range(4):
             p.changeDynamics(
                 self.robot_id,
@@ -190,7 +182,7 @@ class SimulationManager:
                 physicsClientId=self.client_id
             )
             print(f"✅ Pedestal Link {i} Dynamics: {p.getDynamicsInfo(self.robot_id, i)}")
-            
+
     def execute_trajectory(self, trajectory_params, real_time: bool = False):
         """Executes a trajectory using user-updated parameters."""
         if self.robot_id is None:
@@ -208,98 +200,85 @@ class SimulationManager:
 
         if real_time:
             for joint_pos, joint_vel, t in generator.generate_trajectory_realtime():
-                # Control prismatic joints (X, Y, Z)
+                # Indices 0,1,2 => prismatic; index 3 => spherical
                 p.setJointMotorControl2(self.robot_id, 0, p.POSITION_CONTROL, targetPosition=joint_pos[0])
                 p.setJointMotorControl2(self.robot_id, 1, p.POSITION_CONTROL, targetPosition=joint_pos[1])
                 p.setJointMotorControl2(self.robot_id, 2, p.POSITION_CONTROL, targetPosition=joint_pos[2])
 
-                # Control spherical joint (Roll, Pitch, Yaw)
-                target_orientation = p.getQuaternionFromEuler([
-                    joint_pos[3],  # Roll
-                    joint_pos[4],  # Pitch
-                    joint_pos[5]   # Yaw
-                ])
-                p.setJointMotorControlMultiDof(self.robot_id, 3, p.POSITION_CONTROL, targetPosition=target_orientation)
+                target_orientation = p.getQuaternionFromEuler(joint_pos[3:6])
+                p.setJointMotorControlMultiDof(self.robot_id, 3, p.POSITION_CONTROL, 
+                                               targetPosition=target_orientation)
                 p.stepSimulation()
         else:
-            offline_speed_factor = 0.5  # 0.5 means offline simulation runs twice as fast as real time
-
+            offline_speed_factor = 0.5  # run faster than real-time
             print("Executing trajectory offline... Waiting 2 seconds before starting...")
-            time.sleep(2)  # Initial delay before starting
+            time.sleep(2)
+
             joint_positions, joint_velocities, timestamps = generator.generate_trajectory_offline()
             for i in range(len(timestamps)):
-                # Control prismatic joints (X, Y, Z)
                 p.setJointMotorControl2(self.robot_id, 0, p.POSITION_CONTROL, targetPosition=joint_positions[i][0])
                 p.setJointMotorControl2(self.robot_id, 1, p.POSITION_CONTROL, targetPosition=joint_positions[i][1])
                 p.setJointMotorControl2(self.robot_id, 2, p.POSITION_CONTROL, targetPosition=joint_positions[i][2])
 
-                # Control spherical joint (Roll, Pitch, Yaw)
-                target_orientation = p.getQuaternionFromEuler([
-                    joint_positions[i][3],  # Roll
-                    joint_positions[i][4],  # Pitch
-                    joint_positions[i][5]   # Yaw
-                ])
-                p.setJointMotorControlMultiDof(self.robot_id, 3, p.POSITION_CONTROL, targetPosition=target_orientation)
+                target_orientation = p.getQuaternionFromEuler(joint_positions[i][3:6])
+                p.setJointMotorControlMultiDof(self.robot_id, 3, p.POSITION_CONTROL, 
+                                               targetPosition=target_orientation)
                 p.stepSimulation()
-                # Sleep for a fraction of the normal timestep to run offline faster than real time
                 time.sleep(trajectory_params["timestep"] * offline_speed_factor)
 
-
         print("Trajectory execution complete.")
-    def spawn_obj_on_pedestal(self, obj_path: str, mesh_scale=[1, 1, 1]):
+
+    def spawn_obj_on_pedestal(self, 
+                              obj_path: str, 
+                              mesh_scale=[1, 1, 1],
+                              offset=[0.0, 0.0, 0.0],
+                              orientation_euler=[0.0, 0.0, 0.0]):
         """
-        Spawns an OBJ file on top of the pedestal.
-        
-        This method retrieves the pedestal's position (assumed to be link index 3)
-        and creates a visual shape from the provided OBJ file. A new multi-body 
-        is then created with zero mass so that it stays static on the pedestal.
+        Spawns an OBJ file on top of the pedestal with a user-defined offset
+        and orientation (Euler angles in radians).
+
+        :param obj_path: Path to the .obj file
+        :param mesh_scale: [sx, sy, sz]
+        :param offset: [dx, dy, dz]
+        :param orientation_euler: [roll, pitch, yaw] in radians
         """
         if self.robot_id is None:
             print("Error: Robot has not been created yet.")
             return
 
-        # Retrieve the state of the pedestal link (assumed to be link 3)
+        # Get link index 3 position
         pedestal_state = p.getLinkState(self.robot_id, 3)
-        pedestal_position = pedestal_state[0]  # position from the link state
+        pedestal_position = pedestal_state[0]
 
-        # Create a visual shape from the OBJ file.
+        final_position = [
+            pedestal_position[0] + offset[0],
+            pedestal_position[1] + offset[1],
+            pedestal_position[2] + offset[2],
+        ]
+        final_orientation = p.getQuaternionFromEuler(orientation_euler)
+
         obj_visual_shape = p.createVisualShape(
             shapeType=p.GEOM_MESH,
             fileName=obj_path,
             meshScale=mesh_scale
         )
 
-        # Optionally, create a collision shape if physical interaction is needed.
+        # If you need collision, uncomment
         # obj_collision_shape = p.createCollisionShape(
         #     shapeType=p.GEOM_MESH,
         #     fileName=obj_path,
         #     meshScale=mesh_scale
         # )
 
-        # Spawn the OBJ on top of the pedestal using a static multi-body.
         obj_id = p.createMultiBody(
-            baseMass=0,  # static object
+            baseMass=0,
             baseVisualShapeIndex=obj_visual_shape,
-            basePosition=pedestal_position
+            basePosition=final_position,
+            baseOrientation=final_orientation,
+            # baseCollisionShapeIndex=obj_collision_shape,
         )
-        print(f"Spawned OBJ from '{obj_path}' on pedestal at {pedestal_position} with id: {obj_id}")
+        print(
+            f"Spawned OBJ from '{obj_path}' at position {final_position}, "
+            f"orientation={orientation_euler}, ID: {obj_id}"
+        )
         return obj_id
-
-
-if __name__ == "__main__":
-    sim_manager = SimulationManager()
-    sim_manager.create_robot()
-    trajectory_params = {
-        "duration": 20.0,
-        "timestep": 0.01,
-        "frequency": 0.5,
-        "amplitude_translation": 0.5,
-        "amplitude_rotation": 0.1
-    }
-    # Set real_time to True or False as needed
-    sim_manager.execute_trajectory(trajectory_params, real_time=False)
-
-    # Keep the simulation running to observe the behavior
-    while True:
-        p.stepSimulation()
-        time.sleep(0.01)
