@@ -1,6 +1,6 @@
 simulation_settings:
   gravity: [0, 0, -9.81]  # Gravity vector
-  time_step: 0.01         # Time step for simulation
+  time_step: 0.001         # Time step for simulation
   enable_gui: True        # Enable PyBullet GUI
   use_real_time: False    # Use real-time simulation
 
@@ -20,14 +20,14 @@ dynamics:
     restitution: 0.3
     lateralFriction: 0.5
     spinningFriction: 0.3
-    contactDamping: 10000000.0  # Increase damping
-    contactStiffness: 5000000000.0  # Increase stiffness
+    contactDamping: 100000000.0  # Increase damping
+    contactStiffness: 10000000000.0  # Increase stiffness
   pedestal:
     restitution: 0.3
     lateralFriction: 0.3
     spinningFriction: 0.1
-    contactDamping: 10000000.0  # Increase damping
-    contactStiffness: 5000000000.0  # Increase stiffness
+    contactDamping: 100000000.0  # Increase damping
+    contactStiffness: 10000000000.0  # Increase stiffness
 
 joints:
   prismatic_x:
